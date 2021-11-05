@@ -1,0 +1,271 @@
+---
+title: "Cold Surge Monitoring"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: scroll
+---
+<style>
+
+body {
+  padding-top:0px
+}
+
+.navbar{
+  visibility: hidden
+}
+
+</style>
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(knitr)
+library(DT)
+library(ggplot2)
+library(plotly)
+library(dplyr)
+```
+
+
+```{r}
+requiredPackages = c('ncdf4','ggplot2','ncdf4.helpers','reshape','PCICt','scales','knitr', 'grid')
+for(p in requiredPackages){
+  if(!require(p,character.only = TRUE)) install.packages(p)
+  library(p,character.only = TRUE)
+}
+#knitr::kable(head(iris),format = 'html',booktabs = TRUE)
+#setwd
+wdir = './meteogram/' 
+setwd(wdir)
+#cut the domain
+#system("cdo sellonlatbox,90,105,45,55 slp.nc slp_sib.nc")
+#read data input
+nc_slp <- nc_open("max_slp.nc")
+nc_gushslp <- nc_open("gushi_slp.nc")
+nc_hongslp <- nc_open("hongkong_slp.nc")
+nc_hongsuhu <- nc_open("hongkong_suhu.nc")
+nc_cs <- nc_open("cs.nc")
+nc_ncs <- nc_open("ncs.nc")
+
+#nc_suhu <- nc_open("suhu.nc")
+#nc_anginv<- nc_open("anginv.nc")
+#collect global dimensions
+total_var <- length(names(nc_slp[['var']]))
+t <- nc.get.time.series(nc_slp)
+#loop read ensemble var 
+output<-list()
+for(i in 1:total_var){
+  output[[i]]<-ncvar_get(nc_slp,paste0("slp",i))
+  plot1 <- data.frame(matrix(unlist(output), ncol =length(output), byrow=F))
+}
+#plot1$ave<-rowMeans(plot1[,1:5])
+plot1$T<-as.POSIXct.PCICt(t)
+plot1<-melt(plot1, id="T")
+#gushi-hongkong
+output<-list()
+for(i in 1:total_var){
+  output[[i]]<-ncvar_get(nc_gushslp,paste0("slp",i)) - ncvar_get(nc_hongslp,paste0("slp",i))
+  plot2 <- data.frame(matrix(unlist(output), ncol =length(output), byrow=F))
+}
+#plot2$ave<-rowMeans(plot2[,1:5])
+plot2$T<-as.POSIXct.PCICt(t)
+plot2<-melt(plot2, id="T")
+#temp hongkong
+output<-list()
+for(i in 1:total_var){
+  output[[i]]<-ncvar_get(nc_hongsuhu,paste0("suhu",i))
+  plot3 <- data.frame(matrix(unlist(output), ncol =length(output), byrow=F))
+}
+#plot3$ave<-rowMeans(plot3[,1:5])
+plot3$T<-as.POSIXct.PCICt(t)
+plot3<-melt(plot3, id="T")
+#CS
+output<-list()
+for(i in 1:total_var){
+  output[[i]]<-ncvar_get(nc_cs,paste0("anginv",i))
+  plot4 <- data.frame(matrix(unlist(output), ncol =length(output), byrow=F))
+}
+#plot4$ave<-rowMeans(plot4[,1:5])
+plot4$T<-as.POSIXct.PCICt(t)
+plot4<-melt(plot4, id="T")
+#NCS
+output<-list()
+for(i in 1:total_var){
+  output[[i]]<-ncvar_get(nc_ncs,paste0("anginv",i))
+  plot5 <- data.frame(matrix(unlist(output), ncol =length(output), byrow=F))
+}
+#plot5$ave<-rowMeans(plot5[,1:5])
+plot5$T<-as.POSIXct.PCICt(t)
+plot5<-melt(plot5, id="T")
+nc_close(nc_slp)
+nc_close(nc_hongslp)
+nc_close(nc_gushslp)
+nc_close(nc_hongsuhu)
+nc_close(nc_cs)
+nc_close(nc_ncs)
+
+#PLOT SECTION
+#plot1
+g1 <- ggplot(data=plot1,aes(x=T,y=value/100))+
+  geom_line(aes(colour=variable))+
+  stat_summary(fun=mean,geom="line",lwd=1.5,aes(group=1))+
+  labs(x="",y="Press (mb)")+
+  annotation_custom(textGrob(label = "Siberian High Max MSLP", x = .05, y = 0.95, 
+                             just = c("left", "top"),
+                             gp=gpar(fontface = "italic", col = "black",size = 3)),
+                    xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf)+
+  scale_x_datetime(breaks = pretty_breaks(n=8))+
+  theme_bw()+
+  theme(legend.position = "none", plot.margin = margin(5.5, 5.5, 0, 5.5),
+        plot.title = element_text(vjust = -10, hjust = 0.05))
+#plot2
+g2 <- ggplot(data=plot2,aes(x=T,y=value/100))+
+  geom_line(aes(colour=variable))+
+  stat_summary(fun=mean,geom="line",lwd=1.5,aes(group=1))+
+  labs(x="",y="Press (mb)")+
+  annotation_custom(textGrob(label = "Gushi - Hongkong MSLP Difference", x = .05, y = 0.95, 
+                             just = c("left", "top"),
+                             gp=gpar(fontface = "italic", col = "black",size = 3)),
+                    xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf)+
+  scale_x_datetime(breaks = pretty_breaks(n=8))+
+  theme_bw()+
+  theme(legend.position = "none", plot.margin = margin(0, 5.5, 0, 5.5),
+        plot.title = element_text(vjust = -10, hjust = 0.05))
+#plot3
+g3 <- ggplot(data=plot3,aes(x=T,y=value-253.15))+
+  geom_line(aes(colour=variable))+
+  stat_summary(fun=mean,geom="line",lwd=1.5,aes(group=1))+
+  labs(x="",y="(degC)")+
+  annotation_custom(textGrob(label = "Hongkong Surface Temperature", x = .05, y = 0.95, 
+                             just = c("left", "top"),
+                             gp=gpar(fontface = "italic", col = "black",size = 3)),
+                    xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf)+
+  scale_x_datetime(breaks = pretty_breaks(n=8))+
+  theme_bw()+
+  theme(legend.position = "none", plot.margin = margin(0, 5.5, 0, 5.5),
+        plot.title = element_text(vjust = -10, hjust = 0.05))
+#plot4
+g4 <- ggplot(data=plot4,aes(x=T,y=abs(value)))+
+  geom_line(aes(colour=variable))+
+  stat_summary(fun=mean,geom="line",lwd=1.5,aes(group=1))+
+  labs(x="",y="Absolute 925 mb V Wind (m/s)")+
+  annotation_custom(textGrob(label = "Cold Surge Index", x = .05, y = 0.95, 
+                             just = c("left", "top"),
+                             gp=gpar(fontface = "italic", col = "black",size = 3)),
+                    xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf)+
+  scale_x_datetime(breaks = pretty_breaks(n=8))+
+  theme_bw()+
+  theme(legend.position = "none", plot.margin = margin(0, 5.5, 0, 5.5),
+        plot.title = element_text(vjust = -10, hjust = 0.05))
+#plot5
+g5 <- ggplot(data=plot5,aes(x=T,y=abs(value)))+
+  geom_line(aes(colour=variable))+
+  stat_summary(fun=mean,geom="line",lwd=1.5,aes(group=1))+
+  labs(x="",y="Absolute 925 mb V Wind (m/s)")+
+  annotation_custom(textGrob(label = "Notherly Cold Surge Index", x = .05, y = 0.95, 
+                             just = c("left", "top"),
+                             gp=gpar(fontface = "italic", col = "black",size = 3)),
+                    xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf)+
+  scale_x_datetime(breaks = pretty_breaks(n=8))+
+  theme_bw()+
+  theme(legend.position = "none", plot.margin = margin(0, 5.5, 5.5, 5.5),
+        plot.title = element_text(vjust = -10, hjust = 0.05))
+
+last_update <- bar <- subset(plot5, T == max(plot5$T))
+index_cs_update <- round(mean(last_update$value), 3)
+```
+row
+---
+
+### Cold Surge Status
+```{r}
+valueBox(paste("No Cold Surge"),
+         color = "info",
+         icon = "fa-cloud")
+```
+
+### Latest Cold Surge Index
+```{r}
+valueBox(index_cs_update,
+         color = "primary",
+         icon = "fa-bullseye")
+```
+
+row
+---
+### Parameter Radiosonde
+
+row
+---
+
+### Siberian High Max MSLP
+
+```{r}
+fig1 <- ggplotly(g1) %>% 
+  layout(yaxis = list(title = "Press (mb)"))
+fig1
+```
+
+### Gushi - Hongkong MSLP Difference
+
+```{r}
+fig2 <- ggplotly(g2) %>% 
+  layout(yaxis = list(title = "Press (mb)"))
+fig2
+```
+
+### Hongkong Surface Temperature
+
+```{r}
+fig3 <- ggplotly(g3) %>% 
+  layout(yaxis = list(title = "(degC)"))
+fig3
+```
+
+row
+---
+
+### Cold Surge Index
+
+```{r}
+fig4 <- ggplotly(g4) %>% 
+  layout(yaxis = list(title = "Absolute 925 mb V Wind (m/s)"))
+fig4
+```
+
+### Notherly Cold Surge Index
+
+```{r}
+fig5 <- ggplotly(g5) %>% 
+  layout(yaxis = list(title = "Absolute 925 mb V Wind (m/s)"))
+fig5
+```
+
+row
+---
+### Parameter Radiosonde
+
+
+row
+---
+
+### Parameter MOdel
+
+row
+---
+
+### Wind Speed & Relative Humidity Cross Section
+<img src="./cross_section/cross_section_20211014.gif" />
+
+### Divergensi Permukaan
+<img src="./borneo_vortex/divergensi.jpeg" />
+
+### Vortisitas 500 mb
+<img src="./borneo_vortex/vorticity.jpeg" />
+
+### Vortisitas Cross Section
+<img src="./borneo_vortex/cross_section_vorticity.jpeg" />
+
+### Borneo Vortex
+
+<img src="./borneo_vortex/download.jpg" />
